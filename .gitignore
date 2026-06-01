@@ -28,4 +28,4 @@ htmlcov/
 # Distribución
 build/
 dist/
-*.egg-info/
+*.egg-info/reports/
