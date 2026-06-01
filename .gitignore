@@ -1,0 +1,31 @@
+# Ambiente virtual
+venv/
+.venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+
+# VS Code
+.vscode/
+
+# PyCharm
+.idea/
+
+# macOS
+.DS_Store
+
+# Variables de entorno
+.env
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Distribución
+build/
+dist/
+*.egg-info/
