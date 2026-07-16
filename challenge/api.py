@@ -24,7 +24,7 @@ def _load_and_train():
     global model, KNOWN_OPERAS, KNOWN_TIPOVUELO
     if not DATA_PATH.exists():
         raise FileNotFoundError(f"Data file not found at {DATA_PATH}")
-    df = pd.read_csv(DATA_PATH)
+    df = pd.read_csv(DATA_PATH, low_memory=False)
     KNOWN_OPERAS = set(df['OPERA'].unique())
     KNOWN_TIPOVUELO = set(df['TIPOVUELO'].unique())
     model = DelayModel()
@@ -56,7 +56,7 @@ async def get_health():
     return {"status": "OK"}
 
 @app.post("/predict", status_code=200, response_model=PredictResponse)
-async def post_predict(request: PredictRequest):
+def post_predict(request: PredictRequest):
     for flight in request.flights:
         if flight.OPERA not in KNOWN_OPERAS:
             raise HTTPException(status_code=400, detail=f"Unknown OPERA: {flight.OPERA}")
@@ -65,7 +65,7 @@ async def post_predict(request: PredictRequest):
         if flight.MES not in KNOWN_MES:
             raise HTTPException(status_code=400, detail=f"Invalid MES: {flight.MES} (must be 1-12)")
 
-    df = pd.DataFrame([f.dict() for f in request.flights])
+    df = pd.DataFrame([f.model_dump() for f in request.flights])
     features = model.preprocess(df)
     predictions = model.predict(features)
     return PredictResponse(predict=predictions)
