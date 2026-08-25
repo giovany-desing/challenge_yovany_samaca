@@ -1,18 +1,20 @@
 name: Continuous Delivery
 
 on:
-  push:
+  workflow_run:
+    workflows: ["Continuous Integration"]
+    types:
+      - completed
     branches: [ main ]
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
 
     - name: Trigger Render Deploy
-      run: |
-        curl -f -X POST "${{ secrets.RENDER_DEPLOY_HOOK }}"
+      run: curl -f -X POST "${{ secrets.RENDER_DEPLOY_HOOK }}"
