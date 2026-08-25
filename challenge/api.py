@@ -20,6 +20,7 @@ KNOWN_MES = set(range(1, 13))
 
 model = None
 
+
 def _load_and_train():
     global model, KNOWN_OPERAS, KNOWN_TIPOVUELO
     if not DATA_PATH.exists():
@@ -27,10 +28,15 @@ def _load_and_train():
     df = pd.read_csv(DATA_PATH, low_memory=False)
     KNOWN_OPERAS = set(df['OPERA'].unique())
     KNOWN_TIPOVUELO = set(df['TIPOVUELO'].unique())
+
     model = DelayModel()
-    # CORRECCIÓN: pasar target_column para entrenamiento
-    features, target = model.preprocess(df, target_column="delay")
-    model.fit(features, target)
+    artifact_path = BASE_DIR / "challenge" / "artifacts" / "model.joblib"
+    if artifact_path.exists():
+        model.load(str(artifact_path))
+    else:
+        features, target = model.preprocess(df, target_column="delay")
+        model.fit(features, target)
+        model.save(str(artifact_path))
 
 # Train when module loads
 _load_and_train()
