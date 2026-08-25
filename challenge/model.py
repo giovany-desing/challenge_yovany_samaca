@@ -1,8 +1,9 @@
 import pandas as pd
 import numpy as np
 from typing import Tuple, Union, List
-from datetime import datetime
 import xgboost as xgb
+import joblib
+from pathlib import Path
 
 class DelayModel:
 
@@ -82,3 +83,12 @@ class DelayModel:
         features = features[self.top_10_features]
         preds = self._model.predict(features)
         return preds.tolist()
+
+    def save(self, path: str = "challenge/artifacts/model.joblib") -> None:
+        if self._model is None:
+            raise ValueError("Model not trained. Call fit() first.")
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        joblib.dump(self._model, path)
+
+    def load(self, path: str = "challenge/artifacts/model.joblib") -> None:
+        self._model = joblib.load(path)
