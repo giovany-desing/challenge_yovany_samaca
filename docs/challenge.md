@@ -1,5 +1,3 @@
-Documentación del Proyecto
-
 # Documentación del Proyecto
 
 ## Introducción
@@ -50,6 +48,16 @@ Los endpoints están declarados como funciones **síncronas** (`def`, no `async 
 
 **Validado con ejecución real**: `make api-test` → `4 passed`.
 
+### Persistencia del modelo
+
+El modelo entrenado se persiste como artefacto (`challenge/artifacts/model.joblib`) en vez de reentrenarse en cada arranque de la API:
+
+- `scripts/train.py`: script independiente que entrena el modelo desde `data/data.csv` y lo guarda con `joblib`. Se ejecuta con `python scripts/train.py` (o `make train-model`).
+- `DelayModel.save()` / `DelayModel.load()`: métodos agregados en `model.py` para serializar y cargar el modelo (no se modificaron los métodos provistos por el template).
+- `challenge/api.py`: al arrancar, la API intenta cargar el artefacto existente; si no lo encuentra, entrena el modelo y lo guarda automáticamente, sin intervención manual.
+
+**Validado con ejecución real**: arranque con artefacto existente (rápido, sin reentrenar) y arranque sin artefacto (reentrena y regenera el archivo automáticamente), ambos probados en local y en producción (Render), con predicciones consistentes en ambos casos.
+
 ### Parte III – Despliegue en la nube (Render)
 
 **Nota importante**: el despliegue se realizó en [Render](https://render.com) en lugar de GCP/Cloud Run. La cuenta de GCP disponible solo contaba con la capa gratuita de 24 horas, y no fue posible habilitar facturación para un despliegue persistente. El enunciado del challenge indica *"deploy the API in your favorite cloud provider (we recommend to use GCP)"* — es una recomendación, no un requisito estricto, por lo que se optó por Render como alternativa gratuita, sin tarjeta de crédito y con disponibilidad indefinida mientras el servicio se mantenga activo.
@@ -73,19 +81,35 @@ Los endpoints están declarados como funciones **síncronas** (`def`, no `async 
 
 En la primera corrida de `make stress-test` contra Render, con los endpoints declarados como `async def`, se observó una **latencia creciente sostenida durante toda la prueba** (mediana pasando de ~200ms a ~1300ms a medida que se sumaban usuarios, con máximo de 4707ms), aunque sin ningún fallo (0% error rate). La causa: el event loop único del proceso (Render asigna `WEB_CONCURRENCY=1` por defecto en el tier gratuito) se bloqueaba en cada predicción, encolando las solicitudes concurrentes de forma secuencial en vez de procesarlas en paralelo.
 
-**Corrección aplicada**: se cambiaron los endpoints de `async def` a `def` (síncronos), permitiendo que FastAPI los delegue a un threadpool. Tras el fix, se volvió a correr `make stress-test` contra la URL desplegada, confirmando una curva de latencia estable en vez de creciente. *(Actualizar aquí con las cifras finales tras la segunda corrida.)*
+**Corrección aplicada**: se cambiaron los endpoints de `async def` a `def` (síncronos), permitiendo que FastAPI los delegue a un threadpool. Tras el fix, se repitió `make stress-test` contra la URL desplegada bajo las mismas condiciones (100 usuarios, 60s): la latencia siguió creciendo de forma prácticamente idéntica (mediana final ~1900ms, máximo ~4700ms, 0% de fallos en ambos casos). Esto indica que el cuello de botella **no estaba en el manejo de concurrencia de la aplicación**, sino en los recursos de CPU compartidos y limitados de la instancia gratuita de Render (`WEB_CONCURRENCY=1`). Bajo tráfico bajo o moderado la latencia se mantiene en rangos aceptables (~150-300ms, confirmado con requests individuales sin carga concurrente); el crecimiento sostenido solo aparece con 100 usuarios simultáneos, consistente con una limitación de infraestructura y no de la implementación. En ambos escenarios, `make stress-test` se ejecuta sin fallos (0% error rate).
 
 ### Parte IV – CI/CD (GitHub Actions)
 
 Los workflows están en `.github/workflows/`:
 
 - **`ci.yml`**: se ejecuta en cada `push` y `pull_request` a `main`. Corre `make model-test` y `make api-test`.
-- **`cd.yml`**: se ejecuta en cada `push` a `main`. Dispara el despliegue en Render mediante un `curl` al Deploy Hook del servicio:
+- **`cd.yml`**: se dispara mediante `workflow_run`, escuchando la finalización de `ci.yml` en `main` — **solo despliega si `ci.yml` terminó exitosamente** (`conclusion == 'success'`), actuando como quality gate:
 ```yaml
-  - name: Trigger Render Deploy
-    run: curl -f -X POST "${{ secrets.RENDER_DEPLOY_HOOK }}"
+  on:
+    workflow_run:
+      workflows: ["Continuous Integration"]
+      types:
+        - completed
+      branches: [ main ]
+
+  jobs:
+    deploy:
+      runs-on: ubuntu-latest
+      if: ${{ github.event.workflow_run.conclusion == 'success' }}
+      steps:
+      - name: Trigger Render Deploy
+        run: curl -f -X POST "${{ secrets.RENDER_DEPLOY_HOOK }}"
 ```
-  Requiere el secreto `RENDER_DEPLOY_HOOK` configurado en GitHub (`Settings → Secrets and variables → Actions`), obtenido desde `Settings → Deploy Hook` del servicio en el dashboard de Render.
+  Requiere el secreto `RENDER_DEPLOY_HOOK` configurado en GitHub (`Settings → Secrets and variables → Actions`), obtenido desde `Settings → Deploy Hook` del servicio en el dashboard de Render. Antes de este ajuste, `cd.yml` escuchaba `push` directamente, desplegando incluso si los tests de `ci.yml` fallaban — se corrigió para encadenar el despliegue a un CI exitoso.
+
+## Flujo de trabajo (GitFlow)
+
+Los cambios posteriores a la entrega inicial se desarrollaron siguiendo GitFlow: rama `develop` para integración, ramas `feature/*` para cambios puntuales (ej. `feature/model-persistence`), y Pull Requests hacia `develop` y luego hacia `main`. Las ramas de desarrollo se conservan sin eliminar, conforme a la recomendación del enunciado original.
 
 ---
 
