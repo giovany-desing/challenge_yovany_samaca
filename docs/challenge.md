@@ -4,6 +4,57 @@
 
 Este proyecto tiene como objetivo **operacionalizar un modelo de Machine Learning** que predice si un vuelo sufrirá un retraso superior a 15 minutos (`delay` = 1) o no (`delay` = 0) en el aeropuerto SCL. El modelo fue creado por un Data Scientist en un Jupyter Notebook (`exploration.ipynb`). El trabajo realizado consistió en transcribir ese análisis a código robusto (`model.py`), exponerlo mediante una API REST con FastAPI (`api.py`), desplegar la API en la nube y automatizar el proceso con CI/CD usando GitHub Actions.
 
+
+## Verificación rápida 
+
+**API en producción**: `https://delay-api-dkkx.onrender.com`
+
+Health check:
+```bash
+curl https://delay-api-dkkx.onrender.com/health
+```
+
+Predicción — caso de bajo riesgo (esperado: `{"predict":[0]}`):
+```bash
+curl -X POST https://delay-api-dkkx.onrender.com/predict \
+  -H "Content-Type: application/json" \
+  -d '{"flights":[{"OPERA":"Aerolineas Argentinas","TIPOVUELO":"N","MES":3}]}'
+```
+
+Predicción — caso de alto riesgo (esperado: `{"predict":[1]}`):
+```bash
+curl -X POST https://delay-api-dkkx.onrender.com/predict \
+  -H "Content-Type: application/json" \
+  -d '{"flights":[{"OPERA":"Latin American Wings","TIPOVUELO":"I","MES":7}]}'
+```
+
+Casos de error esperados (`400`):
+```bash
+# MES fuera de rango
+curl -i -X POST https://delay-api-dkkx.onrender.com/predict \
+  -H "Content-Type: application/json" \
+  -d '{"flights":[{"OPERA":"Aerolineas Argentinas","TIPOVUELO":"N","MES":13}]}'
+
+# TIPOVUELO inválido
+curl -i -X POST https://delay-api-dkkx.onrender.com/predict \
+  -H "Content-Type: application/json" \
+  -d '{"flights":[{"OPERA":"Aerolineas Argentinas","TIPOVUELO":"O","MES":5}]}'
+
+# OPERA inexistente
+curl -i -X POST https://delay-api-dkkx.onrender.com/predict \
+  -H "Content-Type: application/json" \
+  -d '{"flights":[{"OPERA":"Argentinas","TIPOVUELO":"N","MES":5}]}'
+```
+
+**Nota sobre latencia**: si la instancia estuvo inactiva, el primer request puede tardar 30-50 segundos (cold start del tier gratuito de Render). Las siguientes solicitudes responden en ~150-300ms.
+
+**Tests automatizados**: ver la pestaña [Actions](https://github.com/giovany-desing/challenge_yovany_samaca/actions) del repositorio para el historial de ejecuciones de `ci.yml` (tests) y `cd.yml` (despliegue).
+
+**Código y documentación técnica completa**: ver el resto de este documento y el código fuente en `challenge/`.
+
+
+
+
 ## Correcciones y hallazgos durante el desarrollo
 
 Esta sección separa dos tipos de intervenciones: **bugs reales heredados del notebook original** y **decisiones de ingeniería** necesarias para llevar el análisis exploratorio a un servicio productivo.
